@@ -73,8 +73,8 @@ app.use('/api/pdf', authenticateApiKey);
 // PDF routes
 app.use('/api/pdf', createPdfRoutes(pdfService, storageService));
 
-// 404 handler
-app.use('*', (req, res) => {
+// 404 handler - FIX APPLIED HERE
+app.use((req, res) => { // Removed the '*' from this line
   res.status(404).json({
     success: false,
     error: {

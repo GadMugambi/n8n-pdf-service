@@ -1,29 +1,27 @@
+// src/utils/validation.ts
+
 import Joi from 'joi';
 import { TruncationRequest } from '../types';
+import { ValidationError } from './errors'; // Import your custom error
 
 export const truncationRequestSchema = Joi.object({
   pages: Joi.array()
     .items(Joi.number().integer().min(1))
-    .min(1)
-    .when('pageRange', {
-      is: Joi.exist(),
-      then: Joi.forbidden(),
-      otherwise: Joi.required()
-    }),
+    .min(1),
   pageRange: Joi.object({
     start: Joi.number().integer().min(1).required(),
     end: Joi.number().integer().min(Joi.ref('start'))
-  }).when('pages', {
-    is: Joi.exist(),
-    then: Joi.forbidden(),
-    otherwise: Joi.required()
   })
 }).xor('pages', 'pageRange');
 
 export const validateTruncationRequest = (data: any): TruncationRequest => {
-  const { error, value } = truncationRequestSchema.validate(data);
+  const { error, value } = truncationRequestSchema
+    .options({ presence: 'required' })
+    .validate(data);
+
   if (error) {
-    throw new Error(`Validation error: ${error.details[0].message}`);
+    // Throw your custom validation error for consistent error handling
+    throw new ValidationError(error.details[0].message);
   }
   return value;
 };

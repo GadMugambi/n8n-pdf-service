@@ -1,7 +1,11 @@
 {
   "name": "n8n-pdf-service",
   "version": "1.0.0",
-  "description": "",
+  "engines": {
+    "node": ">=22.16.0",
+    "pnpm": ">=10.4.1"
+  },
+  "description": "PDF processing service with truncation capabilities",
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
