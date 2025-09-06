@@ -1,3 +1,8 @@
 node_modules
 dist
 .env
+uploads/
+processed/
+*.log
+.DS_Store
+Thumbs.db
