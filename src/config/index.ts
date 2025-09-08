@@ -9,6 +9,7 @@ export const config = {
   apiKey: process.env.API_KEY || 'default-api-key',
   uploadDir: path.resolve(process.env.UPLOAD_DIR || 'uploads'),
   processedDir: path.resolve(process.env.PROCESSED_DIR || 'processed'),
+  imagesDir: path.resolve(process.env.IMAGES_DIR || 'images'),
   maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '52428800'), // 50MB
   corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
 } as const;

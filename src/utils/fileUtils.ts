@@ -91,6 +91,14 @@ export class FileUtils {
     return path.join(config.processedDir, filename);
   }
 
+  static getImagesPath(filename: string): string {
+    return path.join(config.imagesDir, filename);
+  }
+
+  static getImagesDir(): string {
+    return config.imagesDir;
+  }
+
   static validateFileExtension(filename: string, allowedExtensions: string[]): boolean {
     const ext = path.extname(filename).toLowerCase();
     return allowedExtensions.includes(ext);

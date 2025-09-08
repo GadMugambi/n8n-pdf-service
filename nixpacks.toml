@@ -1,0 +1,8 @@
+# This phase installs system-level packages before your application code is built.
+[phases.setup]
+# Use aptPkgs to install Poppler utilities and its required data files.
+# This places the binaries in a standard location like /usr/bin, which is in the system PATH.
+aptPkgs = ["poppler-utils", "poppler-data"]
+
+# The 'start' phase is not needed here unless you have a custom start command.
+# Nixpacks will automatically detect it's a Node.js app and run it.

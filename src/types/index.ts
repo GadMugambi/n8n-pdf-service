@@ -8,9 +8,21 @@ export interface TruncationRequest {
   pageRange?: PageRange;
 }
 
+export interface ImageConversionRequest {
+  pages?: number[];
+  pageRange?: PageRange;
+  format?: 'png' | 'jpeg' | 'tiff';
+  scale?: number;
+}
+
 export interface FileKeys {
   originalKey: string;
   truncatedKey: string;
+}
+
+export interface ImageKeys {
+  originalKey: string;
+  imageKeys: string[];
 }
 
 export interface ProcessingStatus {
@@ -28,6 +40,18 @@ export interface StoredFile {
   filePath: string;
   size: number;
   mimeType: string;
+  createdAt: Date;
+}
+
+export interface StoredImage {
+  key: string;
+  originalName: string;
+  fileName: string;
+  filePath: string;
+  size: number;
+  mimeType: string;
+  pageNumber: number;
+  format: string;
   createdAt: Date;
 }
 
