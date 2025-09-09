@@ -27,8 +27,8 @@ export const imageConversionRequestSchema = Joi.object({
 }).xor('pages', 'pageRange');
 
 export const validateTruncationRequest = (data: any): TruncationRequest => {
+  // FIX: Removed .options({ presence: 'required' }) which conflicted with .xor()
   const { error, value } = truncationRequestSchema
-    .options({ presence: 'required' })
     .validate(data);
 
   if (error) {
