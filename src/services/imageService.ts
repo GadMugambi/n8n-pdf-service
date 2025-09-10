@@ -1,3 +1,5 @@
+// src/services/imageService.ts
+
 import fs from 'fs/promises';
 import path from 'path';
 // No change to this import
@@ -59,10 +61,8 @@ export class ImageService {
       const conversionPromises = pagesToConvert.map(async (pageIndex, index) => {
         const pageNumber = pageIndex + 1; // Convert back to 1-based
         const imageKey = FileUtils.generateKey();
-        const imageFileName = `${imageKey}_page_${pageNumber}.${request.format || 'png'}`;
-        const imageFilePath = path.join(outputDir, imageFileName);
         
-        // Define the output file prefix for Poppler
+        // Define the output file prefix for Poppler. Poppler will add the extension and page number.
         const outputFilePrefix = path.join(outputDir, `${imageKey}_page_${pageNumber}`);
 
         // Convert single page to image
@@ -76,18 +76,21 @@ export class ImageService {
         };
 
         try {
-          // CORRECTED: Pass the outputFilePrefix as the second argument
-          await this.poppler.pdfToCairo(originalFile.filePath, outputFilePrefix, options);
+          // FIX: Capture the return value from pdfToCairo, which is the actual output file path.
+          const actualOutputFilePath = await this.poppler.pdfToCairo(originalFile.filePath, outputFilePrefix, options);
           
-          // Get the actual file size
-          const stats = await FileUtils.getFileStats(imageFilePath);
+          // FIX: Use the actual file path returned by Poppler to get stats.
+          const stats = await FileUtils.getFileStats(actualOutputFilePath);
           
-          // Store image info
+          // FIX: Extract the actual filename from the full path.
+          const actualFileName = path.basename(actualOutputFilePath);
+          
+          // Store image info using the correct, actual file details.
           const storedImage: StoredImage = {
             key: imageKey,
-            originalName: `page_${pageNumber}.${request.format || 'png'}`,
-            fileName: imageFileName,
-            filePath: imageFilePath,
+            originalName: `page_${pageNumber}.${request.format || 'png'}`, // Keep this logical name for user reference
+            fileName: actualFileName, // Store the REAL filename on disk
+            filePath: actualOutputFilePath, // Store the REAL filepath on disk
             size: stats.size,
             mimeType: this.getMimeType(request.format || 'png'),
             pageNumber,
