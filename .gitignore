@@ -3,6 +3,7 @@ dist
 .env
 uploads/
 processed/
+images/
 *.log
 .DS_Store
 Thumbs.db
