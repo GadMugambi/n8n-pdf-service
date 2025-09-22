@@ -1,7 +1,5 @@
-# ---- SINGLE-STAGE DOCKERFILE ----
-# This approach prioritizes reliability and correctness over image size.
-# It builds and runs the application in the same environment, eliminating all
-# potential issues from copying files between stages.
+# ---- SINGLE-STAGE DOCKERFILE - FINAL ATTEMPT ----
+# This approach uses a targeted command to force the recompilation of the problematic package.
 
 # Use the Ubuntu 24.04 base image, as you have consistently requested.
 FROM ubuntu:24.04
@@ -25,7 +23,6 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # 2. Install Node.js and pnpm
-# This is the standard, reliable method for a bare Ubuntu system.
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 RUN apt-get install -y --no-install-recommends nodejs
 RUN npm install -g pnpm
@@ -37,14 +34,19 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 
 # 4. Install Application Dependencies
-# This will correctly compile better-sqlite3 inside this unified environment.
 RUN pnpm install --frozen-lockfile
 
-# 5. Copy and Build the Application Source Code
+# 5. TARGETED FIX: Force Rebuild of the Native Addon
+# This command explicitly tells pnpm to re-run the C++ compilation for
+# better-sqlite3 inside the container. This is a direct attempt to fix
+# the "Could not locate the bindings file" error.
+RUN pnpm rebuild better-sqlite3
+
+# 6. Copy and Build the Application Source Code
 COPY . .
 RUN pnpm run build
 
-# 6. Final Configuration for Runtime
+# 7. Final Configuration for Runtime
 ENV NODE_ENV=production
 
 # Expose the correct port for your application
