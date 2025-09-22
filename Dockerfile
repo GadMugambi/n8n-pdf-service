@@ -1,56 +1,68 @@
-# ---- SINGLE-STAGE DOCKERFILE - FINAL ATTEMPT ----
-# This approach uses a targeted command to force the recompilation of the problematic package.
+# ---- Stage 1: The "Builder" ----
+# We use the official full Node.js image which contains all necessary build tools.
+FROM node:22-bookworm AS builder
 
-# Use the Ubuntu 24.04 base image, as you have consistently requested.
-FROM ubuntu:24.04
-
-# Prevent interactive prompts from apt during the build
-ENV DEBIAN_FRONTEND=noninteractive
-
-# 1. Install ALL Dependencies at Once
-# This includes runtime dependencies (curl, poppler) and build-time dependencies
-# (build-essential, python) needed to compile better-sqlite3.
+# Install system dependencies needed for Poppler
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-    build-essential \
-    python3 \
-    pkg-config \
     poppler-utils \
     poppler-data \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 2. Install Node.js and pnpm
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-RUN apt-get install -y --no-install-recommends nodejs
+# Install pnpm globally
 RUN npm install -g pnpm
 
-# 3. Set up the Application Directory
+# Set the working directory
 WORKDIR /app
 
-# Copy package manager files
+# Copy the package.json and the lockfile. The package.json now contains the
+# critical "pnpm.onlyBuiltDependencies" instruction.
 COPY package.json pnpm-lock.yaml ./
 
-# 4. Install Application Dependencies
+# Install ALL dependencies. Because of the instruction in package.json,
+# pnpm will now correctly run the build script for better-sqlite3.
 RUN pnpm install --frozen-lockfile
 
-# 5. TARGETED FIX: Force Rebuild of the Native Addon
-# This command explicitly tells pnpm to re-run the C++ compilation for
-# better-sqlite3 inside the container. This is a direct attempt to fix
-# the "Could not locate the bindings file" error.
-RUN pnpm rebuild better-sqlite3
-
-# 6. Copy and Build the Application Source Code
+# Copy the rest of the application source code
 COPY . .
+
+# Build the TypeScript code into JavaScript
 RUN pnpm run build
 
-# 7. Final Configuration for Runtime
+# Use pnpm prune to remove devDependencies for a smaller final image
+RUN pnpm prune --prod
+
+
+# ---- Stage 2: The Final "Production" Image ----
+# We use a slim image for a smaller, more secure final container.
+FROM node:22-bookworm-slim AS production
+
+# Set the working directory
+WORKDIR /app
+
+# Set the environment to production
 ENV NODE_ENV=production
 
-# Expose the correct port for your application
+# Install ONLY the essential runtime system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    poppler-utils \
+    poppler-data \
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy the pruned, production-only node_modules from the builder stage
+COPY --from=builder /app/node_modules ./node_modules
+
+# Copy the compiled application code
+COPY --from=builder /app/dist ./dist
+
+# Copy package.json for metadata and running scripts if needed
+COPY --from=builder /app/package.json ./package.json
+
+# Expose the correct port
 EXPOSE 3001
 
-# The command to start the application
+# The final, direct command to run the application
 CMD ["node", "dist/index.js"]
