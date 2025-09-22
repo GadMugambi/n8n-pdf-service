@@ -9,6 +9,7 @@ const dataDir = path.resolve(process.env.DATA_DIR || 'persistent_data');
 export const config = {
   port: parseInt(process.env.PORT || '3000'),
   nodeEnv: process.env.NODE_ENV || 'development',
+  logLevel: process.env.LOG_LEVEL || 'info',
   apiKey: process.env.API_KEY || 'default-api-key',
   uploadDir: path.resolve(process.env.UPLOAD_DIR || path.join(dataDir, 'uploads')),
   processedDir: path.resolve(process.env.PROCESSED_DIR || path.join(dataDir, 'processed')),

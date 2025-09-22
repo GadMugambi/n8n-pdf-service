@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { config } from '../config';
+import { logger } from './logger';
 
 export class DatabaseService {
   public readonly db: Database.Database;
@@ -8,12 +9,12 @@ export class DatabaseService {
     // The directory is now guaranteed to exist by the main application starter in index.ts.
     // We can directly and safely create the database connection.
     // The verbose option is helpful for debugging.
-    this.db = new Database(dbPath, { verbose: console.log });
-    console.log(`🗄️  Database connected at ${dbPath}`);
+    this.db = new Database(dbPath, { verbose: (message) => logger.trace(message) });
+    logger.info(`🗄️  Database connected at ${dbPath}`);
   }
 
   public init(): void {
-    console.log('Initializing database schema...');
+    logger.info('Initializing database schema...');
     
     // For better concurrency and performance
     this.db.pragma('journal_mode = WAL');
@@ -73,6 +74,6 @@ export class DatabaseService {
       );
     `);
     
-    console.log('Database schema initialized successfully.');
+    logger.info('Database schema initialized successfully.');
   }
 }

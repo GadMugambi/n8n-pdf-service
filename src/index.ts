@@ -1,5 +1,3 @@
-// src/index.ts
-
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -13,6 +11,8 @@ import { ImageService } from './services/imageService';
 import { StorageService } from './services/storageService';
 import { DatabaseService } from './services/databaseService';
 import { FileUtils } from './utils/fileUtils';
+import { logger } from './services/logger';
+import { UploadProgressService } from './services/uploadProgressService';
 
 // We define this variable here to be accessible by the graceful shutdown handlers.
 let databaseService: DatabaseService;
@@ -21,12 +21,12 @@ async function startServer() {
   try {
     // --- STEP 1: Create ALL necessary directories FIRST ---
     // This ensures that the filesystem is ready before any service tries to use it.
-    console.log('Ensuring all data directories exist...');
+    logger.info('Ensuring all data directories exist...');
     await FileUtils.ensureDirectoryExists(config.uploadDir);
     await FileUtils.ensureDirectoryExists(config.processedDir);
     await FileUtils.ensureDirectoryExists(config.imagesDir);
     await FileUtils.ensureDirectoryExists(config.dbDir); // This was the missing piece.
-    console.log('All data directories are ready.');
+    logger.info('All data directories are ready.');
 
     // --- STEP 2: NOW that directories exist, initialize the services ---
     // Assign to the outer-scoped variable
@@ -36,6 +36,7 @@ async function startServer() {
     const storageService = new StorageService(databaseService);
     const pdfService = new PdfService(storageService);
     const imageService = new ImageService(storageService);
+    const uploadProgressService = new UploadProgressService();
 
     // --- STEP 3: Create and configure the Express app ---
     const app = express();
@@ -68,6 +69,8 @@ async function startServer() {
           description: 'Service for uploading, truncating, and converting PDF files to images',
           endpoints: {
             // PDF endpoints
+            'POST /api/pdf/initiate-upload': 'Get a unique ID to track upload progress',
+            'GET /api/pdf/upload-progress/:uploadId': 'Check the progress of a file upload',
             'POST /api/pdf/upload-and-truncate': 'Upload PDF and start truncation',
             'POST /api/pdf/upload': 'Upload PDF only',
             'POST /api/pdf/truncate/:key': 'Start truncation for uploaded PDF',
@@ -86,7 +89,7 @@ async function startServer() {
             'DELETE /api/images/:imageKey': 'Delete specific image',
             'DELETE /api/images/original/:originalKey': 'Delete all images for original PDF'
           },
-          authentication: 'API Key required in X-API-Key header or Authorization header',
+          authentication: 'API Key required in X-API-Key header or Authorization header. Upload routes also require an X-Upload-ID header.',
           supportedFormats: {
             upload: ['application/pdf'],
             imageFormats: ['png', 'jpeg', 'tiff']
@@ -100,7 +103,7 @@ async function startServer() {
     app.use('/api', authenticateApiKey);
 
     // PDF routes
-    app.use('/api/pdf', createPdfRoutes(pdfService, storageService));
+    app.use('/api/pdf', createPdfRoutes(pdfService, storageService, uploadProgressService));
 
     // Image routes
     app.use('/api/images', createImageRoutes(imageService, storageService));
@@ -121,7 +124,7 @@ async function startServer() {
 
     // --- STEP 4: Start listening for requests ---
     const server = app.listen(config.port, () => {
-      console.log(`
+      const banner = `
 🚀 PDF Processing Service Started
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📍 Server:     http://localhost:${config.port}
@@ -135,21 +138,22 @@ async function startServer() {
 🎯 Max Size:   ${Math.round(config.maxFileSize / 1024 / 1024)}MB
 🌍 Environment: ${config.nodeEnv}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      `);
+      `;
+      logger.info(banner);
     });
 
     // Graceful shutdown handlers need access to the server and db connection
     const shutdown = (signal: string) => {
-      console.log(`🔄 ${signal} received, shutting down gracefully...`);
+      logger.info(`🔄 ${signal} received, shutting down gracefully...`);
       server.close(() => {
-        console.log('HTTP server closed.');
+        logger.info('HTTP server closed.');
         if (databaseService && databaseService.db) {
           try {
             // The .close() method is synchronous and does not take a callback.
             databaseService.db.close();
-            console.log('Database connection closed.');
+            logger.info('Database connection closed.');
           } catch (err: any) {
-            console.error('Error closing database:', err.message);
+            logger.error({ err }, 'Error closing database');
             process.exit(1); // Exit with an error code if db close fails
           }
         }
@@ -161,19 +165,19 @@ async function startServer() {
     process.on('SIGINT', () => shutdown('SIGINT'));
 
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
+    logger.fatal({ err: error }, '❌ Failed to start server');
     process.exit(1);
   }
 }
 
 // Handle uncaught exceptions/rejections
 process.on('uncaughtException', (error) => {
-  console.error('💥 Uncaught Exception:', error);
+  logger.fatal({ err: error }, '💥 Uncaught Exception');
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+  logger.fatal({ reason, promise }, '💥 Unhandled Rejection');
   process.exit(1);
 });
 

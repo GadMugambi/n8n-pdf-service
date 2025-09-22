@@ -1,17 +1,56 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PdfService } from '../services/pdfService';
 import { StorageService } from '../services/storageService';
-import { upload } from '../middleware/upload';
+// FIX: Corrected the import path for the upload handler.
+import { handleUploadWithProgress } from '../middleware/uploadHandler';
 import { validateTruncationRequest } from '../utils/validation';
 import { FileUtils } from '../utils/fileUtils';
 import { ValidationError, NotFoundError } from '../utils/errors';
 import path from 'path';
+import { UploadProgressService } from '../services/uploadProgressService';
+import { logger } from '../services/logger';
 
-export function createPdfRoutes(pdfService: PdfService, storageService: StorageService): Router {
+export function createPdfRoutes(
+  pdfService: PdfService,
+  storageService: StorageService,
+  uploadProgressService: UploadProgressService
+): Router {
   const router = Router();
+  const upload = handleUploadWithProgress(uploadProgressService);
+
+  // New route to initiate an upload and get an ID
+  router.post('/initiate-upload', (req: Request, res: Response) => {
+    const uploadId = uploadProgressService.initiateUpload();
+    logger.info({ uploadId, requestId: req.id }, 'Upload initiated');
+    res.status(200).json({
+      success: true,
+      data: {
+        uploadId,
+        message: 'Upload initiated. Use this ID in the X-Upload-ID header.'
+      }
+    });
+  });
+
+  // New route to check upload progress
+  router.get('/upload-progress/:uploadId', (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { uploadId } = req.params;
+      const progress = uploadProgressService.getProgress(uploadId);
+      if (!progress) {
+        throw new NotFoundError('Upload progress not found for this ID.');
+      }
+      res.status(200).json({
+        success: true,
+        data: progress
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
 
   // Upload and process PDF
-  router.post('/upload-and-truncate', upload.single('pdf'), async (req: Request, res: Response, next: NextFunction) => {
+  router.post('/upload-and-truncate', upload, async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.file) {
         throw new ValidationError('PDF file is required');
@@ -19,6 +58,7 @@ export function createPdfRoutes(pdfService: PdfService, storageService: StorageS
 
       const file = req.file;
       const fileKey = req.body.fileKey;
+      logger.info({ fileKey, originalName: file.originalname, size: file.size, requestId: req.id }, 'File upload complete, starting processing for upload-and-truncate.');
       
       // Validate PDF
       await pdfService.validatePdf(file.path);
@@ -52,7 +92,7 @@ export function createPdfRoutes(pdfService: PdfService, storageService: StorageS
   });
 
   // Upload PDF only (without processing)
-  router.post('/upload', upload.single('pdf'), async (req: Request, res: Response, next: NextFunction) => {
+  router.post('/upload', upload, async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.file) {
         throw new ValidationError('PDF file is required');
@@ -60,6 +100,7 @@ export function createPdfRoutes(pdfService: PdfService, storageService: StorageS
 
       const file = req.file;
       const fileKey = req.body.fileKey;
+      logger.info({ fileKey, originalName: file.originalname, size: file.size, requestId: req.id }, 'File upload complete, storing file.');
       
       // Validate PDF
       const pdfInfo = await pdfService.validatePdf(file.path);
@@ -93,6 +134,7 @@ export function createPdfRoutes(pdfService: PdfService, storageService: StorageS
   router.post('/truncate/:key', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { key } = req.params;
+      logger.info({ key, requestId: req.id }, 'Starting truncation for previously uploaded file.');
       
       // Validate truncation request
       const truncationRequest = validateTruncationRequest(req.body);

@@ -3,6 +3,7 @@ import { FileUtils } from '../utils/fileUtils';
 import { NotFoundError, AppError } from '../utils/errors';
 import { DatabaseService } from './databaseService';
 import Database from 'better-sqlite3';
+import { logger } from './logger';
 
 export class StorageService {
   private db: Database.Database;
@@ -47,6 +48,7 @@ export class StorageService {
     `);
     
     stmt.run({ ...file, createdAt: file.createdAt.toISOString() });
+    logger.info({ fileKey: key, originalName }, 'Stored new file in database');
     return file;
   }
 
@@ -56,6 +58,7 @@ export class StorageService {
       VALUES (@key, @originalPdfKey, @originalName, @fileName, @filePath, @size, @mimeType, @pageNumber, @format, @createdAt)
     `);
     stmt.run({ ...image, createdAt: image.createdAt.toISOString() });
+    logger.info({ imageKey: key, originalPdfKey: image.originalPdfKey, pageNumber: image.pageNumber }, 'Stored new image in database');
     return image;
   }
 
@@ -69,6 +72,7 @@ export class StorageService {
 
     // Verify file still exists on disk
     if (!(await FileUtils.fileExists(row.filePath))) {
+      logger.warn({ fileKey: key, filePath: row.filePath }, 'Database has stale entry for a file that no longer exists on disk. Cleaning up.');
       this.db.prepare('DELETE FROM files WHERE key = ?').run(key); // Clean up stale DB entry
       throw new NotFoundError(`File ${key} no longer exists on disk`);
     }
@@ -86,6 +90,7 @@ export class StorageService {
 
     // Verify image still exists on disk
     if (!(await FileUtils.fileExists(row.filePath))) {
+      logger.warn({ imageKey: key, filePath: row.filePath }, 'Database has stale entry for an image that no longer exists on disk. Cleaning up.');
       this.db.prepare('DELETE FROM images WHERE key = ?').run(key); // Clean up stale DB entry
       throw new NotFoundError(`Image ${key} no longer exists on disk`);
     }
@@ -113,8 +118,9 @@ export class StorageService {
       this.db.prepare('DELETE FROM pdf_processing_status WHERE key = ?').run(key);
       this.db.prepare('DELETE FROM image_processing_status WHERE key = ?').run(key);
       
+      logger.info({ fileKey: key, deletedImagesCount: imagesToDelete.length }, 'Successfully deleted file and associated assets.');
     } catch (error) {
-      console.error(`Error during deletion of file ${key} and its assets:`, error);
+      logger.error({ err: error, fileKey: key }, `Error during deletion of file and its assets`);
       throw new AppError(`Failed to delete file ${key} and its associated assets`, 500, 'DELETE_ERROR');
     }
   }
@@ -124,7 +130,9 @@ export class StorageService {
     try {
       await FileUtils.deleteFile(image.filePath);
       this.db.prepare('DELETE FROM images WHERE key = ?').run(key);
+      logger.info({ imageKey: key }, 'Successfully deleted image.');
     } catch (error) {
+      logger.error({ err: error, imageKey: key }, `Failed to delete image`);
       throw new AppError(`Failed to delete image ${key}`, 500, 'DELETE_ERROR');
     }
   }
@@ -133,6 +141,7 @@ export class StorageService {
     const imagesToDelete = this.getImagesByOriginalKey(originalKey);
     const deletePromises = imagesToDelete.map(image => this.deleteImage(image.key));
     await Promise.all(deletePromises);
+    logger.info({ originalPdfKey: originalKey, deletedCount: imagesToDelete.length }, 'Deleted all images for original PDF key.');
   }
 
   // --- Processing Status Methods ---
@@ -221,8 +230,9 @@ export class StorageService {
       this.db.exec('DELETE FROM files;');
       this.db.exec('DELETE FROM pdf_processing_status;');
       this.db.exec('DELETE FROM image_processing_status;');
+      logger.info('Database cleanup successful.');
     } catch (error) {
-      console.error("Failed to cleanup database:", error);
+      logger.error({ err: error }, "Failed to cleanup database");
     }
   }
 }

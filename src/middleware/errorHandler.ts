@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../utils/errors';
 import { config } from '../config';
+import { logger } from '../services/logger';
 
 // Interface for MulterError
 interface MulterError extends Error {
@@ -20,6 +21,8 @@ export const errorHandler = (
 
   // Handle operational errors
   if (err instanceof AppError) {
+    // Log operational errors at a 'warn' level as they are expected
+    logger.warn({ err, req: { id: req.id, method: req.method, url: req.originalUrl } }, 'Handled operational error');
     res.status(err.statusCode).json({
       success: false,
       error: {
@@ -53,6 +56,7 @@ export const errorHandler = (
       message = 'Too many fields in form.';
     }
     
+    logger.warn({ err: multerErr, req: { id: req.id, method: req.method, url: req.originalUrl } }, 'Multer upload error');
     res.status(statusCode).json({
       success: false,
       error: {
@@ -65,6 +69,7 @@ export const errorHandler = (
 
   // Handle Joi validation errors
   if (err.name === 'ValidationError') {
+    logger.warn({ err, req: { id: req.id, method: req.method, url: req.originalUrl } }, 'Joi validation error');
     res.status(400).json({
       success: false,
       error: {
@@ -76,7 +81,7 @@ export const errorHandler = (
   }
 
   // Handle unknown errors
-  console.error('Unexpected error:', err);
+  logger.error({ err, req: { id: req.id, method: req.method, url: req.originalUrl } }, 'Unexpected error');
   
   res.status(500).json({
     success: false,

@@ -1,8 +1,11 @@
 import multer from 'multer';
 import path from 'path';
+import { Request, Response, NextFunction } from 'express';
 import { config } from '../config';
 import { FileUtils } from '../utils/fileUtils';
-import { ValidationError } from '../utils/errors';
+import { ValidationError, AppError } from '../utils/errors';
+import { UploadProgressService } from '../services/uploadProgressService';
+import { logger } from '../services/logger';
 
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
@@ -48,7 +51,7 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
   }
 };
 
-export const upload = multer({
+const multerUpload = multer({
   storage,
   fileFilter,
   limits: {
@@ -60,3 +63,47 @@ export const upload = multer({
     parts: 20 // Maximum number of parts (fields + files)
   }
 });
+
+export const handleUploadWithProgress = (uploadProgressService: UploadProgressService) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const uploadId = req.headers['x-upload-id'] as string;
+    if (!uploadId) {
+      return next(new ValidationError('X-Upload-ID header is required for uploads.'));
+    }
+
+    const contentLength = req.headers['content-length'];
+    if (!contentLength) {
+      return next(new AppError('Content-Length header is required.', 411, 'LENGTH_REQUIRED'));
+    }
+
+    try {
+      uploadProgressService.startUpload(uploadId, parseInt(contentLength, 10));
+    } catch (e) {
+      return next(new ValidationError('Invalid or expired Upload ID. Please initiate the upload again.'));
+    }
+    
+    let loaded = 0;
+    req.on('data', (chunk) => {
+      loaded += chunk.length;
+      uploadProgressService.updateProgress(uploadId, loaded);
+    });
+
+    req.on('end', () => {
+      uploadProgressService.completeUpload(uploadId);
+    });
+
+    req.on('error', (err) => {
+      logger.error({ err, uploadId }, 'Error during file upload stream.');
+      uploadProgressService.failUpload(uploadId, err.message);
+    });
+
+    // Pass control to the multer middleware
+    multerUpload.single('pdf')(req, res, (err) => {
+      if (err) {
+        // If multer throws an error, fail the progress
+        uploadProgressService.failUpload(uploadId, err.message);
+      }
+      next(err);
+    });
+  };
+};
