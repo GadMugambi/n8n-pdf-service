@@ -1,14 +1,13 @@
 import Database from 'better-sqlite3';
-import { FileUtils } from '../utils/fileUtils';
 import { config } from '../config';
 
 export class DatabaseService {
   public readonly db: Database.Database;
 
   constructor(dbPath: string) {
-    // Ensure the directory for the database exists before connecting
-    FileUtils.ensureDirectoryExists(config.dbDir);
-    
+    // The directory is now guaranteed to exist by the main application starter in index.ts.
+    // We can directly and safely create the database connection.
+    // The verbose option is helpful for debugging.
     this.db = new Database(dbPath, { verbose: console.log });
     console.log(`🗄️  Database connected at ${dbPath}`);
   }
