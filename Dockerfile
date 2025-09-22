@@ -1,16 +1,18 @@
 # ---- Base Image ----
-# Use an official Node.js image. Using a specific version is good practice.
-# 'bookworm' is the codename for the Debian version, which is stable and common.
-FROM node:22-bookworm-slim
+# Use the full bookworm image, which is more robust for builds with native addons.
+FROM node:22-bookworm
 
 # ---- System Dependencies ----
 # Install system packages required for the application.
-# This replaces the `aptPkgs` from your nixpacks.toml.
-# `apt-get clean` and removing cache helps keep the image size small.
+# CRITICAL: Add 'build-essential', 'python3', and 'pkg-config' which are required
+# to compile native C++ addons like better-sqlite3.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     poppler-utils \
     poppler-data \
+    build-essential \
+    python3 \
+    pkg-config \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -25,10 +27,12 @@ COPY package.json pnpm-lock.yaml ./
 # Install pnpm globally within the image
 RUN npm install -g pnpm
 
-# Install application dependencies
+# Install application dependencies. With the build tools now installed,
+# this command will successfully compile better-sqlite3.
 RUN pnpm install --frozen-lockfile
 
-# Copy the rest of your application code into the container
+# Copy the rest of your application code into the container.
+# The .dockerignore file will ensure local node_modules are NOT copied.
 COPY . .
 
 # Build the TypeScript code into JavaScript
@@ -39,7 +43,6 @@ RUN pnpm run build
 ENV NODE_ENV=production
 
 # Expose the port the application will run on
-# This should match the PORT your app listens on.
 EXPOSE 3000
 
 # ---- Start Command ----
