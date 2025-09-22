@@ -1,64 +1,72 @@
-# ---- Stage 1: The "Builder" using Ubuntu 24.04 ----
-# As requested, we start from a clean Ubuntu 24.04 image.
+# ---- Stage 1: The "Builder" - Replicating the successful Nixpacks environment ----
+# As requested, we start from a clean Ubuntu 24.04 image, just like Nixpacks did.
 FROM ubuntu:24.04 AS builder
 
 # Prevent interactive prompts from apt during the build
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install essential tools and build dependencies for Node.js and native addons
+# Set SHELL to bash with pipefail, mimicking Nixpacks
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# 1. Install Core System Dependencies
+# This matches the initial layers of the Nixpacks build.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    sudo \
+    locales \
     curl \
     git \
-    build-essential \
-    python3 \
     pkg-config \
-    poppler-utils \
-    poppler-data \
+    ca-certificates \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Node.js v22 using the official NodeSource repository script
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-RUN apt-get install -y nodejs
+# 2. Install the Nix Package Manager
+# This is the critical step from the Nixpacks build history.
+RUN curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install linux --no-confirm --init none
 
-# Install pnpm globally using npm
-RUN npm install -g pnpm
+# 3. Use Nix to Install Build Tools and a Precise Node.js Environment
+# This is far more reliable than apt for dev tools. This layer includes Node, npm, and pnpm.
+# We also include build-essential (g++ etc.) and poppler-utils here.
+RUN . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh && \
+    nix-env -iA nixpkgs.nodejs-22_x nixpkgs.pnpm nixpkgs.gnumake nixpkgs.gcc nixpkgs.python3 nixpkgs.pkg-config nixpkgs.poppler_utils
 
 # Set the working directory for the application
 WORKDIR /app
 
+# --- Application Build Steps ---
+
 # Copy package manager files
 COPY package.json pnpm-lock.yaml ./
 
-# Install ALL dependencies.
-# With all build tools present, this will correctly compile better-sqlite3
-# inside the Ubuntu environment. We will not prune to ensure integrity.
-RUN pnpm install --frozen-lockfile
+# Install ALL dependencies using the Nix-provided pnpm
+# This will correctly compile better-sqlite3 within the Nix environment.
+RUN . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh && \
+    pnpm install --frozen-lockfile
 
 # Copy the rest of the application source code
 COPY . .
 
 # Build the TypeScript code into JavaScript
-RUN pnpm run build
+RUN . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh && \
+    pnpm run build
 
 
-# ---- Stage 2: The Final "Production" Image using Ubuntu 24.04 ----
-# We use the EXACT same base image to guarantee 100% compatibility.
-FROM ubuntu:24.04 AS production
+# ---- Stage 2: The Final "Production" Image ----
+# We use a slim Debian image for the final stage to keep it small and secure.
+FROM debian:bookworm-slim AS production
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install ONLY the essential runtime dependencies for Node.js and Poppler
+# Install ONLY the essential runtime dependencies (Node.js and Poppler)
+# We will use the more standard NodeSource installation here for simplicity,
+# since we are just running the app, not building it.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
     poppler-utils \
     poppler-data \
+    ca-certificates \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-# Install Node.js v22 again for the runtime environment
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 RUN apt-get install -y nodejs
 
@@ -71,14 +79,14 @@ ENV NODE_ENV=production
 # Copy the compiled application code from the builder stage
 COPY --from=builder /app/dist ./dist
 
-# Copy the entire, fully-functional node_modules directory from the builder stage.
-# This is the most reliable way to ensure the compiled native addon is included.
+# Copy the fully-built node_modules directory from the builder stage.
+# This contains the correctly compiled better-sqlite3 native addon.
 COPY --from=builder /app/node_modules ./node_modules
 
-# Copy the package.json. This is good practice and might be needed by the app.
+# Copy package.json (needed for the start command)
 COPY --from=builder /app/package.json ./package.json
 
-# Expose the port the application will run on
+# Expose the correct port
 EXPOSE 3001
 
 # The final, direct command to run the application.
