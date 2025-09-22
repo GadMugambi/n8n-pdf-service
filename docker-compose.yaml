@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  pdf-service:
+    build:
+      context: .
+      # This tells Docker Compose to look for a 'Dockerfile' in the current directory.
+    ports:
+      # Maps port 3001 on the host to port 3001 in the container.
+      # If your app runs on 3001, you should use "3001:3001".
+      - "3001:3001"
+    # environment:
+    #   # This is for LOCAL development with a .env file.
+    #   # Coolify will override these with its own values at deploy time.
+    #   - API_KEY=${API_KEY}
+    #   - NODE_ENV=production
+    #   - PORT=3001
+    volumes:
+      # This is the most important part for data persistence.
+      # It creates a persistent volume named 'pdf_service_data' and
+      # maps it to the '/app/persistent_data' directory inside the container.
+      - pdf_service_data:/app/persistent_data
+
+volumes:
+  # This declares the named volume, allowing Docker to manage its lifecycle.
+  pdf_service_data:

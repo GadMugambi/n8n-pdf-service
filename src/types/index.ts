@@ -45,6 +45,7 @@ export interface StoredFile {
 
 export interface StoredImage {
   key: string;
+  originalPdfKey: string;
   originalName: string;
   fileName: string;
   filePath: string;

@@ -11,6 +11,7 @@ import { createImageRoutes } from './routes/imageRoutes';
 import { PdfService } from './services/pdfService';
 import { ImageService } from './services/imageService';
 import { StorageService } from './services/storageService';
+import { DatabaseService } from './services/databaseService'; // <-- IMPORT
 import { FileUtils } from './utils/fileUtils';
 
 const app = express();
@@ -77,10 +78,15 @@ app.get('/api-docs', (req, res) => {
   });
 });
 
+// --- UPDATED SERVICE INITIALIZATION ---
 // Initialize services
-const storageService = new StorageService();
+const databaseService = new DatabaseService(config.dbPath);
+databaseService.init(); // Create tables if they don't exist
+
+const storageService = new StorageService(databaseService);
 const pdfService = new PdfService(storageService);
 const imageService = new ImageService(storageService);
+// --- END ---
 
 // Apply authentication to all API routes
 app.use('/api/pdf', authenticateApiKey);
@@ -109,7 +115,7 @@ app.use(errorHandler);
 // Initialize directories and start server
 async function startServer() {
   try {
-    // Ensure required directories exist
+    // Ensure required directories exist (DB dir is handled by DatabaseService)
     await FileUtils.ensureDirectoryExists(config.uploadDir);
     await FileUtils.ensureDirectoryExists(config.processedDir);
     await FileUtils.ensureDirectoryExists(config.imagesDir);
@@ -125,6 +131,7 @@ async function startServer() {
 🗂️  Upload:     ${config.uploadDir}
 📁 Processed:  ${config.processedDir}
 🖼️  Images:     ${config.imagesDir}
+🗄️  Database:   ${config.dbPath}
 🎯 Max Size:   ${Math.round(config.maxFileSize / 1024 / 1024)}MB
 🌍 Environment: ${config.nodeEnv}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -139,11 +146,13 @@ async function startServer() {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('🔄 SIGTERM received, shutting down gracefully...');
+  databaseService.db.close();
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
   console.log('🔄 SIGINT received, shutting down gracefully...');
+  databaseService.db.close();
   process.exit(0);
 });
 

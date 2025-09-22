@@ -94,6 +94,7 @@ export class ImageService {
           // Store image info using the correct details found from the file system
           const storedImage: StoredImage = {
             key: imageKey,
+            originalPdfKey: originalKey,
             originalName: `page_${pageNumber}.${request.format || 'png'}`,
             fileName: actualFileName,
             filePath: actualOutputPath,
